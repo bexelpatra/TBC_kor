@@ -1,14 +1,18 @@
-fastapi
-uvicorn[standard]
-sqlalchemy>=2.0
-alembic
-psycopg2-binary
-pydantic>=2
-pydantic-settings
-python-multipart
-PyJWT
-bcrypt
-cryptography
-openpyxl
-Pillow
-boto3
+# 버전 고정 — 2026-08-02 기준 운영 중이던 버전으로 pin.
+# 고정 전에는 재빌드할 때마다 최신 버전이 설치되어 동작이 달라질 수 있었다.
+# 특히 cryptography 는 학생 이름/학번 AES-GCM 암복호화를 담당하므로
+# 버전 변경 시 반드시 기존 데이터 복호화와 name_hash HMAC 재계산을 검증할 것.
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
+sqlalchemy==2.0.51
+alembic==1.18.5
+psycopg2-binary==2.9.12
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-multipart==0.0.32
+PyJWT==2.13.0
+bcrypt==5.0.0
+cryptography==49.0.0
+openpyxl==3.1.5
+Pillow==12.3.0
+boto3==1.43.48

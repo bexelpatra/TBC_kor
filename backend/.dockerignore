@@ -1,0 +1,24 @@
+# 시크릿 — 이미지에 절대 포함 금지 (런타임에 env_file/환경변수로 주입)
+.env
+.env.*
+!.env.example
+
+# 업로드된 학생 파일 — 런타임 볼륨으로 관리, 이미지에 굽지 않는다
+var/
+
+# Python 캐시 / 가상환경
+# .dockerignore 는 .gitignore 와 매칭 규칙이 달라 중첩 경로에 ** 가 필요하다.
+# (`__pycache__/` 만 쓰면 최상위 디렉터리만 제외됨)
+**/__pycache__
+**/*.py[cod]
+.venv/
+venv/
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# 빌드에 불필요
+Dockerfile
+.dockerignore
+README.md
+*.log
