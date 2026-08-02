@@ -8,14 +8,19 @@ class Settings(BaseSettings):
     # DB
     database_url: str = "postgresql+psycopg2://brain_core_kor:brain_core_kor@localhost:5432/brain_core_kor"
 
-    # JWT
-    jwt_secret: str = "change-me-in-prod"
+    # JWT — 기본값 없음(필수). 아래 주석 참고
+    jwt_secret: str
     jwt_user_minutes: int = 20
     jwt_admin_minutes: int = 240
 
-    # 이름 암호화/HMAC 키 (hex 문자열)
-    name_aes_key: str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
-    name_hmac_key: str = "0123456789abcdef0123456789abcdef"
+    # 이름/학번 암호화·HMAC 키 (hex 문자열) — 기본값 없음(필수)
+    #
+    # 이 세 값에는 의도적으로 기본값을 두지 않는다.
+    # 기본값이 있으면 .env 주입에 실패했을 때 조용히 그 값으로 폴백해서
+    # 암호화가 무력화된 줄 모른 채 서비스가 계속 돌아간다.
+    # 기본값이 없으면 기동 시점에 ValidationError 로 즉시 멈춘다(= 알아챌 수 있다).
+    name_aes_key: str
+    name_hmac_key: str
 
     # 파일 저장
     storage_backend: str = "local"
