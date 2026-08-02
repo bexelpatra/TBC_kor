@@ -1,0 +1,52 @@
+# ── 환경변수 / 시크릿 ─────────────────────────────
+# .env 계열은 전부 제외하고 .env.example 만 커밋한다.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+
+# ── 보안 문서 ─────────────────────────────────────
+# 평문 자격증명이 포함되므로 리포 밖(로컬)에서만 관리한다.
+docs/security/
+
+# ── Python ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Node / 프론트엔드 빌드 결과물 ─────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+.eslintcache
+
+# ── 업로드 / 런타임 데이터 ────────────────────────
+backend/var/
+pgdata/
+
+# ── DB 덤프 / 백업 ────────────────────────────────
+*.sql.gz
+*.dump
+*.bak
+*.tar.gz
+*.bundle
+
+# ── 로그 ──────────────────────────────────────────
+*.log
+logs/
+
+# ── 에디터 / OS ───────────────────────────────────
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
