@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import excel, schemas
@@ -14,12 +15,59 @@ from app.security import aes_decrypt, aes_encrypt, decrypt_name, hash_password, 
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin-users"], dependencies=[Depends(get_current_admin)])
 
+DUP_MESSAGE = "이미 등록된 뒷번호+이름 입니다"
+
 
 def _to_out(u: AppUser) -> schemas.UserOut:
     return schemas.UserOut(
         id=u.id, phone_tail=u.phone_tail, name=decrypt_name(u.name_enc),
         student_number=aes_decrypt(u.student_number_enc), must_change_pw=u.must_change_pw,
     )
+
+
+def _normalize_name(raw: str) -> str:
+    """이름 정규화 — 앞뒤 공백 제거 후 길이 검사.
+
+    name_hmac 은 내부에서 strip 하지만 encrypt_name 은 하지 않는다.
+    여기서 미리 정규화하지 않으면 저장된 이름과 조회용 해시의 기준이 어긋난다.
+    길이 검사를 스키마가 아닌 여기서 하는 이유는, 스키마의 min_length 는 strip 이전
+    문자열을 보기 때문에 "  김  " 같은 입력을 걸러내지 못하고,
+    422 응답이 프로젝트 에러 규약({"error": {...}})과 형식이 달라서다.
+    """
+    name = (raw or "").strip()
+    if len(name) < 2:
+        raise bad_request("INVALID_NAME", "이름은 2자 이상 입력하세요")
+    return name
+
+
+def _assert_no_duplicate(db: Session, phone_tail: str, name_hash: str, exclude_id: int | None = None) -> None:
+    """(뒷번호, 이름) 유니크 인덱스(uq_app_user_login) 충돌을 저장 전에 차단.
+
+    이 사전 검사와 commit 사이에는 틈이 있어 동시 요청은 걸러내지 못한다.
+    최종 방어는 각 commit 을 감싸는 _commit_or_duplicate 가 담당한다.
+    """
+    stmt = select(AppUser).where(
+        AppUser.phone_tail == phone_tail,
+        AppUser.name_hash == name_hash,
+        AppUser.deleted_at.is_(None),
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(AppUser.id != exclude_id)
+    if db.execute(stmt).scalar_one_or_none():
+        raise bad_request("DUPLICATE_USER", DUP_MESSAGE)
+
+
+def _commit_or_duplicate(db: Session) -> None:
+    """commit 하되 유니크 제약 위반이면 500 대신 규약에 맞는 400 으로 변환.
+
+    사전 검사를 통과한 두 요청이 동시에 commit 하면 DB 인덱스가 한쪽을 막는다.
+    이때 IntegrityError 를 그대로 두면 처리되지 않은 예외로 500 이 나간다.
+    """
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise bad_request("DUPLICATE_USER", DUP_MESSAGE)
 
 
 @router.get("", response_model=schemas.Page)
@@ -40,21 +88,18 @@ def list_users(
 
 @router.post("", response_model=schemas.UserOut, status_code=201)
 def create_user(body: schemas.UserCreate, db: Session = Depends(get_db)):
-    nh = name_hmac(body.name)
-    exists = db.execute(
-        select(AppUser).where(AppUser.phone_tail == body.phone_tail, AppUser.name_hash == nh, AppUser.deleted_at.is_(None))
-    ).scalar_one_or_none()
-    if exists:
-        raise bad_request("DUPLICATE_USER", "이미 등록된 뒷번호+이름 입니다")
     from app.security import encrypt_name
+    name = _normalize_name(body.name)
+    nh = name_hmac(name)
+    _assert_no_duplicate(db, body.phone_tail, nh)
     u = AppUser(
-        phone_tail=body.phone_tail, name_enc=encrypt_name(body.name), name_hash=nh,
+        phone_tail=body.phone_tail, name_enc=encrypt_name(name), name_hash=nh,
         student_number_enc=aes_encrypt(body.student_number),
         password_hash=hash_password(initial_user_password(body.student_number)),
         must_change_pw=True,
     )
     db.add(u)
-    db.commit()
+    _commit_or_duplicate(db)
     db.refresh(u)
     return _to_out(u)
 
@@ -128,7 +173,9 @@ def bulk_upload(file: UploadFile, db: Session = Depends(get_db)):
         ))
         created += 1
         results.append({"row": r["row"], "status": "생성", "reason": None})
-    db.commit()
+    # 사전 검사와 commit 사이에 다른 요청이 같은 (뒷번호, 이름) 을 넣으면 여기서 걸린다.
+    # 배치 전체가 롤백되므로 재업로드하면 이미 들어간 행은 "기존 등록 중복" 으로 정리된다.
+    _commit_or_duplicate(db)
     return schemas.BulkResult(created=created, skipped=skipped, errors=errors, results=results)
 
 
@@ -157,26 +204,14 @@ def update_user(user_id: int, body: schemas.UserUpdate, db: Session = Depends(ge
         raise not_found()
     if body.name is not None:
         from app.security import encrypt_name
-        name = body.name.strip()
-        if len(name) < 2:
-            raise bad_request("INVALID_NAME", "이름은 2자 이상 입력하세요")
+        name = _normalize_name(body.name)
         nh = name_hmac(name)
-        # (뒷번호, 이름) 유니크 인덱스(uq_app_user_login) 충돌을 저장 전에 차단
-        dup = db.execute(
-            select(AppUser).where(
-                AppUser.phone_tail == u.phone_tail,
-                AppUser.name_hash == nh,
-                AppUser.id != u.id,
-                AppUser.deleted_at.is_(None),
-            )
-        ).scalar_one_or_none()
-        if dup:
-            raise bad_request("DUPLICATE_USER", "이미 등록된 뒷번호+이름 입니다")
+        _assert_no_duplicate(db, u.phone_tail, nh, exclude_id=u.id)
         u.name_enc = encrypt_name(name)
         u.name_hash = nh
     if body.student_number is not None:
         u.student_number_enc = aes_encrypt(body.student_number)
-    db.commit()
+    _commit_or_duplicate(db)
     db.refresh(u)
     return _to_out(u)
 

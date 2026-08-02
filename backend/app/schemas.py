@@ -52,14 +52,17 @@ class PasswordChange(BaseModel):
 
 
 # ----- 사용자(학생) 관리 -----
+# 이름의 최소 길이는 스키마가 아니라 admin_users._normalize_name 이 검사한다.
+# 스키마의 min_length 는 strip 이전 문자열을 보기 때문에 "  김  " 을 통과시키고,
+# 위반 시 422({"detail": [...]})라 프로젝트 에러 규약({"error": {...}})과 형식이 어긋난다.
 class UserCreate(BaseModel):
     phone_tail: str = Field(pattern=r"^\d{4}$")
-    name: str = Field(min_length=1, max_length=20)
+    name: str = Field(max_length=20)
     student_number: str = Field(pattern=r"^\d{4}$")
 
 
 class UserUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=2, max_length=20)
+    name: str | None = Field(default=None, max_length=20)
     student_number: str | None = Field(default=None, pattern=r"^\d{4}$")
 
 

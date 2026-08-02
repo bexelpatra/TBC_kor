@@ -53,8 +53,9 @@ def validate_row(r: dict) -> str | None:
     """유효성 검사. 통과면 None, 실패면 사유 문자열."""
     if not re.fullmatch(r"\d{4}", r["phone_tail"]):
         return "뒷번호는 숫자 4자리"
-    if not (1 <= len(r["name"]) <= 20):
-        return "이름은 1~20자"
+    # 최소 2자 — 단건 추가/수정(admin_users._normalize_name)과 기준을 맞춘다
+    if not (2 <= len(r["name"]) <= 20):
+        return "이름은 2~20자"
     if not re.fullmatch(r"\d{4}", r["student_number"]):
         return "번호는 숫자 4자리"
     return None
